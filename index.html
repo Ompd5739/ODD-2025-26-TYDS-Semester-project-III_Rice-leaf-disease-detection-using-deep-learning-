@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Rice Leaf Disease Detector</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #74c69d, #f9f9f9);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 720px;
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        }
+        h1 { color: #2d6a4f; font-weight: 700; text-align: center; margin-bottom: .5rem; }
+        .upload-section { text-align: center; margin-bottom: 1.25rem; }
+        .file-input { display: none; }
+        .file-label {
+            background: #52b788;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-block;
+            transition: background 0.25s;
+        }
+        .file-label:hover { background: #40916c; }
+        #image-preview { max-width:100%; max-height:240px; margin-top:1rem; border-radius:8px; display:none; object-fit:contain; }
+        .btn-predict {
+            background: #2d6a4f; color: #fff; border: none; padding: 10px 28px;
+            font-size: 1.05rem; border-radius: 8px; transition: background 0.2s;
+        }
+        .btn-predict:hover { background: #1b4332; }
+        .btn-predict:disabled { background: #cfcfcf; cursor:not-allowed; }
+        #result { margin-top: 1rem; padding: 1rem; border-radius: 8px; text-align: center; font-size: 1.05rem; display: none; }
+        .result-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .result-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .spinner { display:none; margin: 1rem auto; width: 40px; height: 40px; border:4px solid #f3f3f3; border-top:4px solid #52b788; border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+        .chatbot-btn { background: #40916c; color:white; border:none; padding: 8px 14px; border-radius:8px; text-decoration:none; margin:4px; display:inline-block;}
+        .chatbot-btn:hover { background:#2d6a4f; color:white; }
+        pre { white-space: pre-wrap; word-break: break-word; }
+        .topk-list { text-align:left; display:inline-block; margin-top:.5rem; }
+        .topk-list li { margin:0.2rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌾 Rice Leaf Disease Detector</h1>
+        <p class="text-muted text-center">Upload a clear image of a rice leaf to detect potential diseases.</p>
+
+        <div class="upload-section">
+            <label for="file-input" class="file-label" aria-hidden="false">Choose Image</label>
+            <input type="file" id="file-input" class="file-input" accept="image/*" aria-label="Upload rice leaf image"/>
+            <div>
+                <img id="image-preview" alt="Preview of uploaded image"/>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-center gap-2">
+            <button id="predict-btn" class="btn btn-predict" disabled>Predict Disease</button>
+            <button id="clear-btn" class="btn btn-outline-secondary">Clear</button>
+        </div>
+
+        <div id="spinner" class="spinner" role="status" aria-hidden="true"></div>
+
+        <div id="result" role="status" aria-live="polite"></div>
+
+        <div class="text-center mt-3">
+            <a href="https://cdn.botpress.cloud/webchat/v3.3/shareable.html?configUrl=https://files.bpcontent.cloud/2024/11/05/06/20241105063924-L2X5PI73.json" target="_blank" class="chatbot-btn">💬 Chat with AI</a>
+            <a href="https://wa.me/8669181865?text=Hello%2C%20I%20need%20help%20with%20rice%20disease%20detection" target="_blank" class="chatbot-btn">💬 Support</a>
+            <p class="text-muted small mt-2">Need help? Chat with our AI expert or support team.</p>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    (function () {
+        const fileInput = document.getElementById('file-input');
+        const predictBtn = document.getElementById('predict-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const imagePreview = document.getElementById('image-preview');
+        const resultDiv = document.getElementById('result');
+        const spinner = document.getElementById('spinner');
+
+        // When user clicks the visible label, the hidden input opens because of for="file-input"
+        fileInput.addEventListener('change', function () {
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    predictBtn.disabled = false;
+                    resultDiv.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.style.display = 'none';
+                predictBtn.disabled = true;
+            }
+        });
+
+        clearBtn.addEventListener('click', function () {
+            fileInput.value = '';
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
+            predictBtn.disabled = true;
+            resultDiv.style.display = 'none';
+        });
+
+        // Utility to convert confidence to percent string
+        function confidenceToPercentStr(value) {
+            if (value === null || value === undefined) return "N/A";
+            // if number > 1 assume percent already, else multiply
+            let v = Number(value);
+            if (isNaN(v)) return value;
+            if (v <= 1.0) v = v * 100;
+            return v.toFixed(2) + "%";
+        }
+
+        predictBtn.addEventListener('click', function () {
+            if (!fileInput.files[0]) {
+                alert('Please select an image first.');
+                return;
+            }
+
+            // UI: show spinner
+            spinner.style.display = 'block';
+            predictBtn.disabled = true;
+            resultDiv.style.display = 'none';
+            resultDiv.className = '';
+            resultDiv.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(async (response) => {
+                // parse JSON (and handle non-JSON errors)
+                const data = await response.json().catch(() => null);
+                spinner.style.display = 'none';
+                predictBtn.disabled = false;
+
+                if (!response.ok) {
+                    // server returned an error status
+                    const errMsg = data && data.error ? data.error : `Server returned status ${response.status}`;
+                    resultDiv.className = 'result-error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `❌ Error: ${errMsg}`;
+                    return;
+                }
+
+                // If API returns legacy keys (`prediction`, `confidence`) handle that
+                const predictedClass = data.predicted_class || data.prediction || data.label || null;
+                const confidenceRaw = data.confidence !== undefined ? data.confidence : (data.confidence_percent || null);
+                const topK = data.top_k || data.topK || null;
+                const all_probs = data.all_probs || data.probs || null;
+
+                if (data.error) {
+                    resultDiv.className = 'result-error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `❌ Error: ${data.error}`;
+                    return;
+                }
+
+                if (!predictedClass) {
+                    // Fallback if API shape differs
+                    resultDiv.className = 'result-error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `❌ Unexpected response from server.<br/><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    return;
+                }
+
+                // Build display HTML
+                const confStr = confidenceToPercentStr(confidenceRaw);
+                let html = `<div>✅ <strong>Prediction:</strong> ${predictedClass}</div>`;
+                html += `<div><strong>Confidence:</strong> ${confStr}</div>`;
+
+                if (Array.isArray(topK) && topK.length > 0) {
+                    html += `<div style="margin-top:.6rem"><strong>Top ${topK.length}:</strong></div>`;
+                    html += `<ul class="topk-list">`;
+                    topK.forEach(item => {
+                        // item may be {class: "...", probability: 0.8} or ["label", prob]
+                        if (typeof item === 'object') {
+                            const cls = item.class || item.label || item[0] || "unknown";
+                            const p = item.probability !== undefined ? item.probability : (item[1] !== undefined ? item[1] : null);
+                            html += `<li>${cls} — ${confidenceToPercentStr(p)}</li>`;
+                        } else {
+                            html += `<li>${String(item)}</li>`;
+                        }
+                    });
+                    html += `</ul>`;
+                } else if (all_probs && typeof all_probs === 'object') {
+                    // show sorted top-3 from all_probs
+                    const entries = Object.entries(all_probs)
+                        .map(([k,v]) => [k, Number(v)])
+                        .sort((a,b)=>b[1]-a[1])
+                        .slice(0, 3);
+                    html += `<div style="margin-top:.6rem"><strong>Top 3:</strong></div>`;
+                    html += `<ul class="topk-list">`;
+                    entries.forEach(([k,v]) => {
+                        html += `<li>${k} — ${confidenceToPercentStr(v)}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+
+                resultDiv.className = 'result-success';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = html;
+            })
+            .catch((err) => {
+                spinner.style.display = 'none';
+                predictBtn.disabled = false;
+                resultDiv.className = 'result-error';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = '❌ An error occurred. Please try again.<br/>' + `<pre>${err.message}</pre>`;
+                console.error(err);
+            });
+        });
+    })();
+    </script>
+</body>
+</html>
